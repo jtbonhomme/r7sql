@@ -14,3 +14,5 @@ results
 npm-debug.log
 node_modules
 *.sql.gz
+.DS_Store
+dump*.sql
