@@ -13,4 +13,5 @@ http://dev.mysql.com/downloads/mirror.php?id=413530
 
    npm install
    mysql -u root -h localhost < sql/create_db_redmine.sql
-   mysql -u root -h localhost < dump.sql
+   mysql -u root -h localhost db_redmine < dump.sql
+   mysql -u root -h localhost < sql/delete_db_redmine.sql

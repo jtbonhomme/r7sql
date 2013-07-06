@@ -56,6 +56,31 @@ var status = {
   "failed":       16
 };
 
+var invStatus = [
+  "null"         ,
+  "new"          ,
+  "ready"        ,
+  "on_going"     ,
+  "to_be_tested" ,
+  "done"         ,
+  "completed"    ,
+  "delivered"    ,
+  "verified"     ,
+  "terminated"   ,
+  "waiting"      ,
+  "waiting_ta"   ,
+  "mw_ready"     ,
+  "mw_done"      ,
+  "ui_ready"     ,
+  "waiting_mw"   ,
+  "failed"       
+];
+
+var green   = '\u001b[32m';
+var red     = '\u001b[31m';
+var blue    = '\u001b[34m';
+var reset   = '\u001b[0m';
+
 var connection = mysql.createConnection({
   host     : 'localhost',
   user     : 'root',
@@ -67,7 +92,7 @@ sys.log('Connecting to MySQL...');
  
 connection.connect(function(error, results) {
   if(error) {
-    console.log('Connection Error: ' + error.message);
+    sys.log('Connection Error: ' + error.message);
     return;
   }
   sys.log('Connected to MySQL');
@@ -78,11 +103,12 @@ var defects = [];
 var averageFixDelay = 0;
 
 isClosed = function (state) {
-  return (state === status.to_be_tested ||
-          state === status.done  ||
-          state === status.completed  ||
-          state === status.delivered  ||
-          state === status.verified ) ? true : false;
+  var closed =  (state == status.to_be_tested ||
+          state == status.done  ||
+          state == status.completed  ||
+          state == status.delivered  ||
+          state == status.verified ) ? true : false;
+  return closed;
 };
 
 getDateIntervalInDays = function (end, start) {
@@ -95,27 +121,45 @@ updateDefects = function (defectState) {
   defects.forEach(function(defect) {
     if( defect.id == defectState.id ) {
       defect.state = defectState.toState;
-      defect.closedOn = isClosed(defectState.toState) ? defectState.modifiedOn : "n/a";
+      if( defect.isClosed == false && isClosed(defectState.toState) == true ) {
+        // defect goes from open to closed
+        defect.closedOn = defectState.modifiedOn;
+        defect.fixDelay =  getDateIntervalInDays(defectState.createdOn, defectState.modifiedOn);
+        defect.isClosed = true;
+      }
       defect.severity =  defectState.severity;
       defect.subject =   defectState.subject;
-      defect.fixDelay =  isClosed(defectState.toState) ? getDateIntervalInDays(defectState.createdOn, defectState.modifiedOn) : 0;
+      //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset);
       defectExists = true;
-      console.log("   - Found id " + defect.id + "(state = "+ defect.state +" / fix delay = "+defect.fixDelay+")\n");
       return;
     }
   });
 
   if( !defectExists ) {
-    defects.push({
-      "id":        defectState.id,
-      "openedOn":  defectState.createdOn,
-      "state":     defectState.toState,
-      "closedOn":  isClosed(defectState.toState) ? defectState.modifiedOn : "n/a",
-      "severity":  defectState.severity,
-      "subject":   defectState.subject,
-      "fixDelay":  isClosed(defectState.toState) ? getDateIntervalInDays(defectState.modifiedOn, defectState.createdOn) : 0
-    });
-    console.log("   - New one"+ defectState.id + "(state = "+ defectState.toState +" / fix delay = "+isClosed(defectState.toState) ? getDateIntervalInDays(defectState.modifiedOn, defectState.createdOn) : 0+")\n");
+    if( isClosed(defectState.toState) == true ) {      
+      defects.push({
+        "id":        defectState.id,
+        "createdOn":  defectState.createdOn,
+        "state":     defectState.toState,
+        "closedOn":  defectState.modifiedOn,
+        "severity":  defectState.severity,
+        "subject":   defectState.subject,
+        "isClosed":  true,
+        "fixDelay":  getDateIntervalInDays(defectState.modifiedOn, defectState.createdOn)
+      });
+    }
+    else{
+      defects.push({
+        "id":        defectState.id,
+        "createdOn":  defectState.createdOn,
+        "state":     defectState.toState,
+        "closedOn":  defectState.createdOn,
+        "severity":  defectState.severity,
+        "subject":   defectState.subject,
+        "isClosed":  false,
+        "fixDelay":  0
+      });
+    }
   }
 
   return true;
@@ -147,7 +191,7 @@ connectionReady = function(connection) {
     "and db_redmine.issues.status_id!='9'"
      ].join(''), function selectCb(error, results, fields) {
       if (error) {
-          console.log('GetData Error: ' + error.message);
+          sys.log('GetData Error: ' + error.message);
           client.end();
           return;
       }
@@ -163,7 +207,6 @@ connectionReady = function(connection) {
           "createdOn":  result['created_on'],
           "severity":    result['severity']
         };
-        console.log(i + ' / ' + results.length + '[#' + defectState.id+'] ' + defectState.severity);
         updateDefects(defectState);
       }
       closeConnection(connection);
@@ -174,27 +217,21 @@ closeConnection = function(connection) {
   connection.end();
   sys.log('Connection closed');
   var now = new Date();
+  var total = 0;
 
   defects.forEach(function(defect) {
-   var severity = defect.severity;
-
-   if( defect.severity === "" ) {
-     severity = "Normal";
+    total++;
+    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset);
+    if( defect.severity === "" ) {
+      defect.severity = "Normal";
     }
-    console.log('[#' + defect.id+'] status = ' + defect.state + 'severity = ' + severity);
-    if( defect.state === status.to_be_tested ||
-        defect.state === status.done  ||
-        defect.state === status.completed  ||
-        defect.state === status.delivered  ||
-        defect.state === status.verified) {
-      console.log("CLOSED !");
-      stats[severity].closed++;
-      stats[severity].averageTimeToFix+=defect.fixDelay;
+    if( defect.isClosed == true ) {
+      stats[defect.severity].closed++;
+      stats[defect.severity].averageTimeToFix+=defect.fixDelay;
     }
     else {
-      console.log("OPEN ! severity = " + severity);
-      stats[severity].opened++;
-      stats[severity].averageTimeToFix+=getDateIntervalInDays(now, defect.createdOn);
+      stats[defect.severity].opened++;
+      stats[defect.severity].averageTimeToFix+=getDateIntervalInDays(now, defect.createdOn);
     }
   });
 
@@ -206,6 +243,7 @@ closeConnection = function(connection) {
   stats['Trivial'].averageTimeToFix/=(stats['Trivial'].closed+stats['Trivial'].opened);
 
   console.log("--------STATISTIQUES---------");
+  console.log("> " + total+ " defects");
   console.log("1/ Blocker");
   console.log("Open : " + stats['Blocker'].opened + " / Close : " + stats['Blocker'].closed);
   console.log("Average Time To Fix : " + stats['Blocker'].averageTimeToFix);
