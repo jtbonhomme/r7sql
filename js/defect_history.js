@@ -1,13 +1,26 @@
+/*
+ * This program reads data in mySql dump of a redmine database and analyzis 
+ * defects to extracts statistics :
+ * - number of open and closed defects per severity (custom field)
+ * - average time needed to fix an issue (one value per severity)
+ * - histogram with these previous data, day by day (todo: use dataviz js lib)
+ */
+
+// node dependencies (see package.json for 'mysql' version)
 var sys = require("sys");
 var mysql = require('mysql');
 
+// local dependencies
 var Redmine = require('./redmine');
 var Time = require('./time');
 
 var redmine = new Redmine();
 var time = new Time();
 
+// global variables (sounds ugly)
+var history = [];
 var defects = [];
+var averageFixDelay = 0;
 var stats = {
   "Blocker": {
     "closed": 0,
@@ -41,6 +54,7 @@ var stats = {
   }
 };
 
+// todo: use colors.js : https://github.com/marak/colors.js/
 var green   = '\u001b[32m';
 var red     = '\u001b[31m';
 var blue    = '\u001b[34m';
@@ -53,19 +67,14 @@ var connection = mysql.createConnection({
   database : 'db_redmine'
 });
 
-sys.log('Connecting to MySQL...');
- 
+// start here
 connection.connect(function(error, results) {
   if(error) {
     sys.log('Connection Error: ' + error.message);
     return;
   }
-  sys.log('Connected to MySQL');
   connectionReady(connection);
 });
-
-var defects = [];
-var averageFixDelay = 0;
 
 
 updateDefects = function (defectState) {
@@ -120,7 +129,6 @@ updateDefects = function (defectState) {
 
 connectionReady = function(connection) {
   // select all defects to initialize the database
-  sys.log("connectionReady ...");
   var query = [
     "select ",
     "db_redmine.issues.id as journalized_id,",
@@ -158,14 +166,12 @@ connectionReady = function(connection) {
       };
       updateDefects(defectState);
     }
-    sys.log("connectionReady ... done");
     connectionReady2(connection);
   });
 };
 
 connectionReady2 = function(connection) {
   // select all non terminated defects
-  sys.log("connectionReady2 ...");
   var query = [
     "select ",
     "db_redmine.journals.journalized_id,",
@@ -209,21 +215,21 @@ connectionReady2 = function(connection) {
       };
       updateDefects(defectState);
     }
-    sys.log("connectionReady2 ... done");
     closeConnection(connection);
   });
 };
 
 closeConnection = function(connection) {
-  sys.log('closeConnection...');
   connection.end();
-  sys.log('Connection closed');
+  letsCompute();
+};
+
+letsCompute = function() {
   var now = new Date();
   var total = 0;
-
   defects.forEach(function(defect) {
     total++;
-    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + redmine.invRedmineStatusId[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
+    //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + redmine.invRedmineStatusId[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
     if( defect.severity === "" ) {
       defect.severity = "Normal";
     }
@@ -265,6 +271,5 @@ closeConnection = function(connection) {
   console.log("6/ Trivial (average Time To Fix : " + stats['Trivial'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Trivial'].opened + " / Close : " + stats['Trivial'].closed);
   console.log("");
-  sys.log('closeConnection...done');
 };
 
