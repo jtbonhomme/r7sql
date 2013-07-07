@@ -167,7 +167,50 @@ updateDefects = function (defectState) {
 
 connectionReady = function(connection) {
   // select all non terminated defects
-  connection.query([
+  var query = [
+    "select ",
+    "db_redmine.issues.id as journalized_id,",
+    "db_redmine.issues.subject,",
+    "db_redmine.issues.created_on, ",
+    "db_redmine.issues.created_on as modified_on, ",
+    "db_redmine.custom_values.value as severity ",
+    "from ",
+    "db_redmine.issues,",
+    "db_redmine.custom_values ",
+    "where ",
+    "db_redmine.issues.tracker_id='1' ",
+    "and db_redmine.issues.project_id='9' ",
+    "and db_redmine.custom_values.custom_field_id='26' ",
+    "and db_redmine.custom_values.customized_id = db_redmine.issues.id ",
+    "and db_redmine.issues.status_id!='9'"
+     ].join('');
+  connection.query(query, function selectCb(error, results, fields) {
+    if (error) {
+        sys.log('GetData Error: ' + error.message);
+        client.end();
+        return;
+    }
+
+    for (i = 0; i < results.length ; i++ ) {
+      var result = results[i];
+      var defectState = {
+        "id":           result['journalized_id'],
+        "subject":      result['subject'],
+        "modifiedOn":   result['modified_on'],
+        "fromState":    1,
+        "toState":      1,
+        "createdOn":    result['created_on'],
+        "severity":     result['severity']
+      };
+      updateDefects(defectState);
+    }
+    connectionReady2(connection);
+  });
+};
+
+connectionReady2 = function(connection) {
+  // select all non terminated defects
+  var query = [
     "select ",
     "db_redmine.journals.journalized_id,",
     "db_redmine.journals.created_on as modified_on,",
@@ -189,27 +232,28 @@ connectionReady = function(connection) {
     "and db_redmine.custom_values.custom_field_id='26' ",
     "and db_redmine.custom_values.customized_id = db_redmine.issues.id ",
     "and db_redmine.issues.status_id!='9'"
-     ].join(''), function selectCb(error, results, fields) {
-      if (error) {
-          sys.log('GetData Error: ' + error.message);
-          client.end();
-          return;
-      }
+     ].join('');
+  connection.query(query, function selectCb(error, results, fields) {
+    if (error) {
+        sys.log('GetData Error: ' + error.message);
+        client.end();
+        return;
+    }
 
-      for (i = 0; i < results.length ; i++ ) {
-        var result = results[i];
-        var defectState = {
-          "id":          result['journalized_id'],
-          "subject":     result['subject'],
-          "modifiedOn":  result['modified_on'],
-          "fromState":  result['old_value'],
-          "toState":  result['value'],
-          "createdOn":  result['created_on'],
-          "severity":    result['severity']
-        };
-        updateDefects(defectState);
-      }
-      closeConnection(connection);
+    for (i = 0; i < results.length ; i++ ) {
+      var result = results[i];
+      var defectState = {
+        "id":          result['journalized_id'],
+        "subject":     result['subject'],
+        "modifiedOn":  result['modified_on'],
+        "fromState":  result['old_value'],
+        "toState":  result['value'],
+        "createdOn":  result['created_on'],
+        "severity":    result['severity']
+      };
+      updateDefects(defectState);
+    }
+    closeConnection(connection);
   });
 };
 
@@ -235,32 +279,32 @@ closeConnection = function(connection) {
     }
   });
 
-  stats['Blocker'].averageTimeToFix/=(stats['Blocker'].closed+stats['Blocker'].opened);
-  stats['Critical'].averageTimeToFix/=(stats['Critical'].closed+stats['Critical'].opened);
-  stats['Major'].averageTimeToFix/=(stats['Major'].closed+stats['Major'].opened);
-  stats['Normal'].averageTimeToFix/=(stats['Normal'].closed+stats['Normal'].opened);
-  stats['Minor'].averageTimeToFix/=(stats['Minor'].closed+stats['Minor'].opened);
-  stats['Trivial'].averageTimeToFix/=(stats['Trivial'].closed+stats['Trivial'].opened);
+  stats['Blocker'].averageTimeToFix=Math.round(stats['Blocker'].averageTimeToFix/(stats['Blocker'].closed+stats['Blocker'].opened));
+  stats['Critical'].averageTimeToFix=Math.round(stats['Critical'].averageTimeToFix/(stats['Critical'].closed+stats['Critical'].opened));
+  stats['Major'].averageTimeToFix=Math.round(stats['Major'].averageTimeToFix/(stats['Major'].closed+stats['Major'].opened));
+  stats['Normal'].averageTimeToFix=Math.round(stats['Normal'].averageTimeToFix/(stats['Normal'].closed+stats['Normal'].opened));
+  stats['Minor'].averageTimeToFix=Math.round(stats['Minor'].averageTimeToFix/(stats['Minor'].closed+stats['Minor'].opened));
+  stats['Trivial'].averageTimeToFix=Math.round(stats['Trivial'].averageTimeToFix/(stats['Trivial'].closed+stats['Trivial'].opened));
 
   console.log("--------STATISTIQUES---------");
   console.log("> " + total+ " defects");
-  console.log("1/ Blocker");
+  console.log("1/ Blocker (average Time To Fix : " + stats['Blocker'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Blocker'].opened + " / Close : " + stats['Blocker'].closed);
-  console.log("Average Time To Fix : " + stats['Blocker'].averageTimeToFix);
-  console.log("2/ Critical");
+  console.log("");
+  console.log("2/ Critical (average Time To Fix : " + stats['Critical'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Critical'].opened + " / Close : " + stats['Critical'].closed);
-  console.log("Average Time To Fix : " + stats['Critical'].averageTimeToFix);
-  console.log("3/ Major");
+  console.log("");
+  console.log("3/ Major (average Time To Fix : " + stats['Major'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Major'].opened + " / Close : " + stats['Major'].closed);
-  console.log("Average Time To Fix : " + stats['Major'].averageTimeToFix);
-  console.log("4/ Normal");
+  console.log("");
+  console.log("4/ Normal (average Time To Fix : " + stats['Normal'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Normal'].opened + " / Close : " + stats['Normal'].closed);
-  console.log("Average Time To Fix : " + stats['Normal'].averageTimeToFix);
-  console.log("5/ Minor");
+  console.log("");
+  console.log("5/ Minor (average Time To Fix : " + stats['Minor'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Minor'].opened + " / Close : " + stats['Minor'].closed);
-  console.log("Average Time To Fix : " + stats['Minor'].averageTimeToFix);
-  console.log("6/ Trivial");
+  console.log("");
+  console.log("6/ Trivial (average Time To Fix : " + stats['Trivial'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Trivial'].opened + " / Close : " + stats['Trivial'].closed);
-  console.log("Average Time To Fix : " + stats['Trivial'].averageTimeToFix);
+  console.log("");
 };
 
