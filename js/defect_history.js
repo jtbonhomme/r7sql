@@ -1,9 +1,13 @@
 var sys = require("sys");
-
 var mysql = require('mysql');
 
-var defects = [];
+var Redmine = require('./redmine');
+var Time = require('./time');
 
+var redmine = new Redmine();
+var time = new Time();
+
+var defects = [];
 var stats = {
   "Blocker": {
     "closed": 0,
@@ -37,45 +41,6 @@ var stats = {
   }
 };
 
-var status = {
-  "new":          1,
-  "ready":        2,
-  "on_going":     3,
-  "to_be_tested": 4,
-  "done":         5,
-  "completed":    6,
-  "delivered":    7,
-  "verified":     8,
-  "terminated":   9,
-  "waiting":      10,
-  "waiting_ta":   11,
-  "mw_ready":     12,
-  "mw_done":      13,
-  "ui_ready":     14,
-  "waiting_mw":   15,
-  "failed":       16
-};
-
-var invStatus = [
-  "null"         ,
-  "new"          ,
-  "ready"        ,
-  "on_going"     ,
-  "to_be_tested" ,
-  "done"         ,
-  "completed"    ,
-  "delivered"    ,
-  "verified"     ,
-  "terminated"   ,
-  "waiting"      ,
-  "waiting_ta"   ,
-  "mw_ready"     ,
-  "mw_done"      ,
-  "ui_ready"     ,
-  "waiting_mw"   ,
-  "failed"       
-];
-
 var green   = '\u001b[32m';
 var red     = '\u001b[31m';
 var blue    = '\u001b[34m';
@@ -102,27 +67,6 @@ connection.connect(function(error, results) {
 var defects = [];
 var averageFixDelay = 0;
 
-isClosed = function (state) {
-  var closed =  (state == status.to_be_tested ||
-          state == status.done  ||
-          state == status.completed  ||
-          state == status.delivered  ||
-          state == status.verified ) ? true : false;
-  return closed;
-};
-
-// reset time in a date (00:00:00)
-resetTimeInDate = function(fullDate) {
-  var day = fullDate.getDate();
-  var month = fullDate.getMonth();
-  var year = fullDate.getFullYear();
-  var roundedDate = new Date(year, month, day);
-  return roundedDate;
-};
-
-getDateIntervalInDays = function (start, end) {
-  return (end-start)/(1000*60*60*24);
-};
 
 updateDefects = function (defectState) {
   var defectExists = false;
@@ -130,39 +74,39 @@ updateDefects = function (defectState) {
   defects.forEach(function(defect) {
     if( defect.id == defectState.id ) {
       defect.state = defectState.toState;
-      if( defect.isClosed == false && isClosed(defectState.toState) == true ) {
+      if( defect.isClosed == false && redmine.isClosed(defectState.toState) == true ) {
         // defect goes from open to closed
-        defect.closedOn = resetTimeInDate(defectState.modifiedOn);
-        defect.fixDelay =  getDateIntervalInDays(resetTimeInDate(defectState.createdOn), resetTimeInDate(defectState.modifiedOn));
+        defect.closedOn = time.resetTimeInDate(defectState.modifiedOn);
+        defect.fixDelay =  time.getDateIntervalInDays(time.resetTimeInDate(defectState.createdOn), time.resetTimeInDate(defectState.modifiedOn));
         defect.isClosed = true;
       }
       defect.severity =  defectState.severity;
       defect.subject =   defectState.subject;
-      //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset);
+      //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + Redmine.invRedmineStatusId[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset);
       defectExists = true;
       return;
     }
   });
 
   if( !defectExists ) {
-    if( isClosed(defectState.toState) == true ) {      
+    if( redmine.isClosed(defectState.toState) == true ) {      
       defects.push({
         "id":        defectState.id,
-        "createdOn": resetTimeInDate(defectState.createdOn),
+        "createdOn": time.resetTimeInDate(defectState.createdOn),
         "state":     defectState.toState,
-        "closedOn":  resetTimeInDate(defectState.modifiedOn),
+        "closedOn":  time.resetTimeInDate(defectState.modifiedOn),
         "severity":  defectState.severity,
         "subject":   defectState.subject,
         "isClosed":  true,
-        "fixDelay":  getDateIntervalInDays(resetTimeInDate(defectState.createdOn), resetTimeInDate(defectState.modifiedOn))
+        "fixDelay":  time.getDateIntervalInDays(time.resetTimeInDate(defectState.createdOn), time.resetTimeInDate(defectState.modifiedOn))
       });
     }
     else{
       defects.push({
         "id":        defectState.id,
-        "createdOn": resetTimeInDate(defectState.createdOn),
+        "createdOn": time.resetTimeInDate(defectState.createdOn),
         "state":     defectState.toState,
-        "closedOn":  resetTimeInDate(defectState.createdOn),
+        "closedOn":  time.resetTimeInDate(defectState.createdOn),
         "severity":  defectState.severity,
         "subject":   defectState.subject,
         "isClosed":  false,
@@ -206,10 +150,10 @@ connectionReady = function(connection) {
       var defectState = {
         "id":           result['journalized_id'],
         "subject":      result['subject'],
-        "modifiedOn":   resetTimeInDate(result['modified_on']),
+        "modifiedOn":   time.resetTimeInDate(result['modified_on']),
         "fromState":    1,
         "toState":      1,
-        "createdOn":    resetTimeInDate(result['created_on']),
+        "createdOn":    time.resetTimeInDate(result['created_on']),
         "severity":     result['severity']
       };
       updateDefects(defectState);
@@ -257,10 +201,10 @@ connectionReady2 = function(connection) {
       var defectState = {
         "id":          result['journalized_id'],
         "subject":     result['subject'],
-        "modifiedOn":  resetTimeInDate(result['modified_on']),
+        "modifiedOn":  time.resetTimeInDate(result['modified_on']),
         "fromState":  result['old_value'],
         "toState":  result['value'],
-        "createdOn":  resetTimeInDate(result['created_on']),
+        "createdOn":  time.resetTimeInDate(result['created_on']),
         "severity":    result['severity']
       };
       updateDefects(defectState);
@@ -279,7 +223,7 @@ closeConnection = function(connection) {
 
   defects.forEach(function(defect) {
     total++;
-    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
+    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + redmine.invRedmineStatusId[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
     if( defect.severity === "" ) {
       defect.severity = "Normal";
     }
@@ -289,7 +233,7 @@ closeConnection = function(connection) {
     }
     else {
       stats[defect.severity].opened++;
-      stats[defect.severity].averageTimeToFix+=getDateIntervalInDays(defect.createdOn, now);
+      stats[defect.severity].averageTimeToFix+=time.getDateIntervalInDays(defect.createdOn, now);
     }
   });
 
