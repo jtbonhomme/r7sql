@@ -111,6 +111,15 @@ isClosed = function (state) {
   return closed;
 };
 
+// reset time in a date (00:00:00)
+resetTimeInDate = function(fullDate) {
+  var day = fullDate.getDate();
+  var month = fullDate.getMonth();
+  var year = fullDate.getFullYear();
+  var roundedDate = new Date(year, month, day);
+  return roundedDate;
+};
+
 getDateIntervalInDays = function (start, end) {
   return (end-start)/(1000*60*60*24);
 };
@@ -123,8 +132,8 @@ updateDefects = function (defectState) {
       defect.state = defectState.toState;
       if( defect.isClosed == false && isClosed(defectState.toState) == true ) {
         // defect goes from open to closed
-        defect.closedOn = defectState.modifiedOn;
-        defect.fixDelay =  getDateIntervalInDays(defectState.createdOn, defectState.modifiedOn);
+        defect.closedOn = resetTimeInDate(defectState.modifiedOn);
+        defect.fixDelay =  getDateIntervalInDays(resetTimeInDate(defectState.createdOn), resetTimeInDate(defectState.modifiedOn));
         defect.isClosed = true;
       }
       defect.severity =  defectState.severity;
@@ -139,21 +148,21 @@ updateDefects = function (defectState) {
     if( isClosed(defectState.toState) == true ) {      
       defects.push({
         "id":        defectState.id,
-        "createdOn":  defectState.createdOn,
+        "createdOn": resetTimeInDate(defectState.createdOn),
         "state":     defectState.toState,
-        "closedOn":  defectState.modifiedOn,
+        "closedOn":  resetTimeInDate(defectState.modifiedOn),
         "severity":  defectState.severity,
         "subject":   defectState.subject,
         "isClosed":  true,
-        "fixDelay":  getDateIntervalInDays(defectState.createdOn, defectState.modifiedOn)
+        "fixDelay":  getDateIntervalInDays(resetTimeInDate(defectState.createdOn), resetTimeInDate(defectState.modifiedOn))
       });
     }
     else{
       defects.push({
         "id":        defectState.id,
-        "createdOn":  defectState.createdOn,
+        "createdOn": resetTimeInDate(defectState.createdOn),
         "state":     defectState.toState,
-        "closedOn":  defectState.createdOn,
+        "closedOn":  resetTimeInDate(defectState.createdOn),
         "severity":  defectState.severity,
         "subject":   defectState.subject,
         "isClosed":  false,
@@ -197,10 +206,10 @@ connectionReady = function(connection) {
       var defectState = {
         "id":           result['journalized_id'],
         "subject":      result['subject'],
-        "modifiedOn":   result['modified_on'],
+        "modifiedOn":   resetTimeInDate(result['modified_on']),
         "fromState":    1,
         "toState":      1,
-        "createdOn":    result['created_on'],
+        "createdOn":    resetTimeInDate(result['created_on']),
         "severity":     result['severity']
       };
       updateDefects(defectState);
@@ -248,10 +257,10 @@ connectionReady2 = function(connection) {
       var defectState = {
         "id":          result['journalized_id'],
         "subject":     result['subject'],
-        "modifiedOn":  result['modified_on'],
+        "modifiedOn":  resetTimeInDate(result['modified_on']),
         "fromState":  result['old_value'],
         "toState":  result['value'],
-        "createdOn":  result['created_on'],
+        "createdOn":  resetTimeInDate(result['created_on']),
         "severity":    result['severity']
       };
       updateDefects(defectState);
@@ -270,7 +279,7 @@ closeConnection = function(connection) {
 
   defects.forEach(function(defect) {
     total++;
-    //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
+    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
     if( defect.severity === "" ) {
       defect.severity = "Normal";
     }
