@@ -111,7 +111,7 @@ isClosed = function (state) {
   return closed;
 };
 
-getDateIntervalInDays = function (end, start) {
+getDateIntervalInDays = function (start, end) {
   return (end-start)/(1000*60*60*24);
 };
 
@@ -145,7 +145,7 @@ updateDefects = function (defectState) {
         "severity":  defectState.severity,
         "subject":   defectState.subject,
         "isClosed":  true,
-        "fixDelay":  getDateIntervalInDays(defectState.modifiedOn, defectState.createdOn)
+        "fixDelay":  getDateIntervalInDays(defectState.createdOn, defectState.modifiedOn)
       });
     }
     else{
@@ -166,7 +166,8 @@ updateDefects = function (defectState) {
 };
 
 connectionReady = function(connection) {
-  // select all non terminated defects
+  // select all defects to initialize the database
+  sys.log("connectionReady ...");
   var query = [
     "select ",
     "db_redmine.issues.id as journalized_id,",
@@ -204,12 +205,14 @@ connectionReady = function(connection) {
       };
       updateDefects(defectState);
     }
+    sys.log("connectionReady ... done");
     connectionReady2(connection);
   });
 };
 
 connectionReady2 = function(connection) {
   // select all non terminated defects
+  sys.log("connectionReady2 ...");
   var query = [
     "select ",
     "db_redmine.journals.journalized_id,",
@@ -253,11 +256,13 @@ connectionReady2 = function(connection) {
       };
       updateDefects(defectState);
     }
+    sys.log("connectionReady2 ... done");
     closeConnection(connection);
   });
 };
 
 closeConnection = function(connection) {
+  sys.log('closeConnection...');
   connection.end();
   sys.log('Connection closed');
   var now = new Date();
@@ -265,7 +270,7 @@ closeConnection = function(connection) {
 
   defects.forEach(function(defect) {
     total++;
-    console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset);
+    //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + invStatus[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
     if( defect.severity === "" ) {
       defect.severity = "Normal";
     }
@@ -275,17 +280,18 @@ closeConnection = function(connection) {
     }
     else {
       stats[defect.severity].opened++;
-      stats[defect.severity].averageTimeToFix+=getDateIntervalInDays(now, defect.createdOn);
+      stats[defect.severity].averageTimeToFix+=getDateIntervalInDays(defect.createdOn, now);
     }
   });
 
-  stats['Blocker'].averageTimeToFix=Math.round(stats['Blocker'].averageTimeToFix/(stats['Blocker'].closed+stats['Blocker'].opened));
-  stats['Critical'].averageTimeToFix=Math.round(stats['Critical'].averageTimeToFix/(stats['Critical'].closed+stats['Critical'].opened));
-  stats['Major'].averageTimeToFix=Math.round(stats['Major'].averageTimeToFix/(stats['Major'].closed+stats['Major'].opened));
-  stats['Normal'].averageTimeToFix=Math.round(stats['Normal'].averageTimeToFix/(stats['Normal'].closed+stats['Normal'].opened));
-  stats['Minor'].averageTimeToFix=Math.round(stats['Minor'].averageTimeToFix/(stats['Minor'].closed+stats['Minor'].opened));
-  stats['Trivial'].averageTimeToFix=Math.round(stats['Trivial'].averageTimeToFix/(stats['Trivial'].closed+stats['Trivial'].opened));
+  stats['Blocker'].averageTimeToFix=Math.round(stats['Blocker'].averageTimeToFix/(stats['Blocker'].closed+stats['Blocker'].opened)*5/7);
+  stats['Critical'].averageTimeToFix=Math.round(stats['Critical'].averageTimeToFix/(stats['Critical'].closed+stats['Critical'].opened)*5/7);
+  stats['Major'].averageTimeToFix=Math.round(stats['Major'].averageTimeToFix/(stats['Major'].closed+stats['Major'].opened)*5/7);
+  stats['Normal'].averageTimeToFix=Math.round(stats['Normal'].averageTimeToFix/(stats['Normal'].closed+stats['Normal'].opened)*5/7);
+  stats['Minor'].averageTimeToFix=Math.round(stats['Minor'].averageTimeToFix/(stats['Minor'].closed+stats['Minor'].opened)*5/7);
+  stats['Trivial'].averageTimeToFix=Math.round(stats['Trivial'].averageTimeToFix/(stats['Trivial'].closed+stats['Trivial'].opened)*5/7);
 
+  console.log("");
   console.log("--------STATISTIQUES---------");
   console.log("> " + total+ " defects");
   console.log("1/ Blocker (average Time To Fix : " + stats['Blocker'].averageTimeToFix + " days)");
@@ -306,5 +312,6 @@ closeConnection = function(connection) {
   console.log("6/ Trivial (average Time To Fix : " + stats['Trivial'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Trivial'].opened + " / Close : " + stats['Trivial'].closed);
   console.log("");
+  sys.log('closeConnection...done');
 };
 
