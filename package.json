@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "dependencies": {
     "mysql": "2.0.0-alpha8",
+    "g.raphael": "*",
     "grunt": "~0.4.1",
     "grunt-contrib-jshint": "~0.4.3",
     "grunt-contrib-jst": "~0.5.0",

@@ -309,7 +309,7 @@ letsCompute = function() {
       stats[defect.severity].averageTimeToFix+=time.getDateIntervalInDays(defect.createdOn, now);
     }
   });
-  displayStatistics();
+  displayCsv();
 };
 
 displayStatistics = function() {
@@ -341,15 +341,27 @@ displayStatistics = function() {
   console.log("6/ Trivial (average Time To Fix : " + stats['Trivial'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Trivial'].opened + " / Close : " + stats['Trivial'].closed);
   console.log("");
-  var dateTimeline,
-      blockerTimeline,
-      criticalTimeline,
-      majorTimeline,
-      normalTimeline,
-      minorTimeline,
-      trivialTimeline;
+};
+
+
+displayCsv = function() {
+  var blockerTimeline   = 0,
+      criticalTimeline  = 0,
+      majorTimeline     = 0,
+      normalTimeline    = 0,
+      minorTimeline     = 0,
+      trivialTimeline   = 0;
+
+  console.log("date ; Blocker ; Critical ; Major ; Normal ; Minor ; Trivial ; Total");
   history.allDates.forEach(function(hist) {
-    console.log("Blocker "+hist+" :"+history[hist].Blocker)    
+    blockerTimeline   += history[hist].Blocker;
+    criticalTimeline  += history[hist].Critical;
+    majorTimeline     += history[hist].Major;
+    normalTimeline    += history[hist].Normal;
+    minorTimeline     += history[hist].Minor;
+    trivialTimeline   += history[hist].Trivial;
+
+    console.log(hist+" ; " + blockerTimeline + " ; " + criticalTimeline + " ; " + majorTimeline + " ; " + normalTimeline + " ; " + minorTimeline + " ; " + trivialTimeline + " ; " + (blockerTimeline + criticalTimeline + majorTimeline + normalTimeline + minorTimeline + trivialTimeline));
   });
 };
 
