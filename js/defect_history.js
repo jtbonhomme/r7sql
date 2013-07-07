@@ -1,9 +1,14 @@
 /*
+ * Description :
  * This program reads data in mySql dump of a redmine database and analyzis 
  * defects to extracts statistics :
  * - number of open and closed defects per severity (custom field)
  * - average time needed to fix an issue (one value per severity)
  * - histogram with these previous data, day by day (todo: use dataviz js lib)
+ * Installation :
+ * Import in your local mysql server a Redmine mysql dump.
+ * Then run
+ *     node js/defect_history.js
  */
 
 // node dependencies (see package.json for 'mysql' version)
@@ -13,7 +18,9 @@ var mysql = require('mysql');
 // local dependencies
 var Redmine = require('./redmine');
 var Time = require('./time');
+var Db = require('./db');
 
+var db = new Db();
 var redmine = new Redmine();
 var time = new Time();
 
@@ -61,10 +68,10 @@ var blue    = '\u001b[34m';
 var reset   = '\u001b[0m';
 
 var connection = mysql.createConnection({
-  host     : 'localhost',
-  user     : 'root',
-  password : '',
-  database : 'db_redmine'
+  host     : db.host,
+  user     : db.user,
+  password : db.password,
+  database : db.database
 });
 
 // start here
@@ -131,20 +138,20 @@ connectionReady = function(connection) {
   // select all defects to initialize the database
   var query = [
     "select ",
-    "db_redmine.issues.id as journalized_id,",
-    "db_redmine.issues.subject,",
-    "db_redmine.issues.created_on, ",
-    "db_redmine.issues.created_on as modified_on, ",
-    "db_redmine.custom_values.value as severity ",
+    db.database+".issues.id as journalized_id,",
+    db.database+".issues.subject,",
+    db.database+".issues.created_on, ",
+    db.database+".issues.created_on as modified_on, ",
+    db.database+".custom_values.value as severity ",
     "from ",
-    "db_redmine.issues,",
-    "db_redmine.custom_values ",
+    db.database+".issues,",
+    db.database+".custom_values ",
     "where ",
-    "db_redmine.issues.tracker_id='1' ",
-    "and db_redmine.issues.project_id='9' ",
-    "and db_redmine.custom_values.custom_field_id='26' ",
-    "and db_redmine.custom_values.customized_id = db_redmine.issues.id ",
-    "and db_redmine.issues.status_id!='9'"
+    db.database+".issues.tracker_id='"+db.defect_tracker_id+"' ",
+    "and "+db.database+".issues.project_id='"+db.project_id+"' ",
+    "and "+db.database+".custom_values.custom_field_id='"+db.custom_field_id+"' ",
+    "and "+db.database+".custom_values.customized_id = "+db.database+".issues.id ",
+    "and "+db.database+".issues.status_id!='"+db.terminated_status_id+"'"
      ].join('');
   connection.query(query, function selectCb(error, results, fields) {
     if (error) {
@@ -174,26 +181,27 @@ connectionReady2 = function(connection) {
   // select all non terminated defects
   var query = [
     "select ",
-    "db_redmine.journals.journalized_id,",
-    "db_redmine.journals.created_on as modified_on,",
-    "db_redmine.journal_details.old_value,",
-    "db_redmine.journal_details.value,",
-    "db_redmine.issues.subject,",
-    "db_redmine.issues.created_on, ",
-    "db_redmine.custom_values.value as severity ",
+    db.database+".journals.journalized_id,",
+    db.database+".journals.created_on as modified_on,",
+    db.database+".journal_details.old_value,",
+    db.database+".journal_details.value,",
+    db.database+".issues.subject,",
+    db.database+".issues.created_on, ",
+    db.database+".custom_values.value as severity ",
     "from ",
-    "db_redmine.issues,",
-    "db_redmine.journals,",
-    "db_redmine.journal_details, ",
-    "db_redmine.custom_values ",
+    db.database+".issues,",
+    db.database+".journals,",
+    db.database+".journal_details, ",
+    db.database+".custom_values ",
     "where ",
-    "db_redmine.journals.journalized_id = db_redmine.issues.id ",
-    "and db_redmine.journals.id = db_redmine.journal_details.journal_id ",
-    "and db_redmine.journal_details.prop_key = 'status_id' and db_redmine.issues.tracker_id='1' ",
-    "and db_redmine.issues.project_id='9' ",
-    "and db_redmine.custom_values.custom_field_id='26' ",
-    "and db_redmine.custom_values.customized_id = db_redmine.issues.id ",
-    "and db_redmine.issues.status_id!='9'"
+    db.database+".journals.journalized_id = "+db.database+".issues.id ",
+    "and "+db.database+".journals.id = "+db.database+".journal_details.journal_id ",
+    "and "+db.database+".journal_details.prop_key = 'status_id' ",
+    "and "+db.database+".issues.tracker_id='"+db.defect_tracker_id+"' ",
+    "and "+db.database+".issues.project_id='"+db.project_id+"' ",
+    "and "+db.database+".custom_values.custom_field_id='"+db.custom_field_id+"' ",
+    "and "+db.database+".custom_values.customized_id = "+db.database+".issues.id ",
+    "and "+db.database+".issues.status_id!='"+db.terminated_status_id+"'"
      ].join('');
   connection.query(query, function selectCb(error, results, fields) {
     if (error) {
