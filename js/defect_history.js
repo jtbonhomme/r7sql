@@ -24,11 +24,25 @@ var db = new Db();
 var redmine = new Redmine();
 var time = new Time();
 
-// global variables (sounds ugly)
-var history = [];
+/*
+ * global variables
+ *
+ * history = {
+ *   "20130401": {
+ *     "created": ...
+ *     "closed": ...
+ *   },
+ *   ...
+ }
+ * };
+ */
+var history = {
+  "allDates": []
+}; 
 var defects = [];
 var averageFixDelay = 0;
 var stats = {
+  "total": 0,
   "Blocker": {
     "closed": 0,
     "opened": 0,
@@ -80,21 +94,63 @@ connection.connect(function(error, results) {
     sys.log('Connection Error: ' + error.message);
     return;
   }
-  connectionReady(connection);
+  getAllDefectsFromDatabase(connection);
 });
 
+initializeHistoryDate = function (date) {
+  history.allDates.push(time.toDateString(date));
+  history[time.toDateString(date)] = {
+//    "created": {
+      "Blocker":  0,
+      "Critical": 0,
+      "Major":    0,
+      "Normal":   0,
+      "Minor":    0,
+      "Trivial":  0
+/*    }, 
+    "closed":{
+      "Blocker":  0,
+      "Critical": 0,
+      "Major":    0,
+      "Normal":   0,
+      "Minor":    0,
+      "Trivial":  0
+    }*/
+  };
+};
+
+// state = "created" | "closed"
+updateHistoryDate = function(date, severity, state) {
+  if( typeof history[time.toDateString(date)] == 'undefined' ) {
+    initializeHistoryDate(date);
+  }
+/*  if( state == "created" ||  state == "closed") {
+    history[time.toDateString(date)][state][severity]++;
+  }*/
+  if( state == "created" )
+    history[time.toDateString(date)][severity]++;
+  else
+    history[time.toDateString(date)][severity]--;
+};
 
 updateDefects = function (defectState) {
   var defectExists = false;
 
+  // handle with defect without severity
+  if( defectState.severity == "") {
+    defectState.severity = "Normal";
+  }
+
+  // parse all recorded defects
   defects.forEach(function(defect) {
-    if( defect.id == defectState.id ) {
+    if( defect.id == defectState.id ) {  // this defect has already been parsed and recorded
       defect.state = defectState.toState;
       if( defect.isClosed == false && redmine.isClosed(defectState.toState) == true ) {
         // defect goes from open to closed
         defect.closedOn = time.resetTimeInDate(defectState.modifiedOn);
         defect.fixDelay =  time.getDateIntervalInDays(time.resetTimeInDate(defectState.createdOn), time.resetTimeInDate(defectState.modifiedOn));
         defect.isClosed = true;
+        updateHistoryDate(defectState.modifiedOn, defectState.severity, "closed");
       }
       defect.severity =  defectState.severity;
       defect.subject =   defectState.subject;
@@ -104,7 +160,10 @@ updateDefects = function (defectState) {
     }
   });
 
-  if( !defectExists ) {
+  if( !defectExists ) { // this defect has never been parsed nor recorded
+    // initialize date in history and say a record
+    updateHistoryDate(defectState.createdOn, defectState.severity, "created");
+    // record defect in local db
     if( redmine.isClosed(defectState.toState) == true ) {      
       defects.push({
         "id":        defectState.id,
@@ -116,6 +175,7 @@ updateDefects = function (defectState) {
         "isClosed":  true,
         "fixDelay":  time.getDateIntervalInDays(time.resetTimeInDate(defectState.createdOn), time.resetTimeInDate(defectState.modifiedOn))
       });
+      updateHistoryDate(defectState.createdOn, defectState.severity, "closed");
     }
     else{
       defects.push({
@@ -134,7 +194,7 @@ updateDefects = function (defectState) {
   return true;
 };
 
-connectionReady = function(connection) {
+getAllDefectsFromDatabase = function(connection) {
   // select all defects to initialize the database
   var query = [
     "select ",
@@ -173,11 +233,11 @@ connectionReady = function(connection) {
       };
       updateDefects(defectState);
     }
-    connectionReady2(connection);
+    getDefectsUpdateHistory(connection);
   });
 };
 
-connectionReady2 = function(connection) {
+getDefectsUpdateHistory = function(connection) {
   // select all non terminated defects
   var query = [
     "select ",
@@ -234,13 +294,12 @@ closeConnection = function(connection) {
 
 letsCompute = function() {
   var now = new Date();
-  var total = 0;
   defects.forEach(function(defect) {
-    total++;
+    stats.total++;
     //console.log('[#' + defect.id+'] created on : '+ defect.createdOn +', status : ' + red + redmine.invRedmineStatusId[defect.state] + reset + ' (till '+ defect.closedOn +') - severity : ' + green + defect.severity + reset + " | time to fix : " + blue + defect.fixDelay + reset);
-    if( defect.severity === "" ) {
+    /*if( defect.severity === "" ) {
       defect.severity = "Normal";
-    }
+    }*/
     if( defect.isClosed == true ) {
       stats[defect.severity].closed++;
       stats[defect.severity].averageTimeToFix+=defect.fixDelay;
@@ -250,7 +309,10 @@ letsCompute = function() {
       stats[defect.severity].averageTimeToFix+=time.getDateIntervalInDays(defect.createdOn, now);
     }
   });
+  displayStatistics();
+};
 
+displayStatistics = function() {
   stats['Blocker'].averageTimeToFix=Math.round(stats['Blocker'].averageTimeToFix/(stats['Blocker'].closed+stats['Blocker'].opened)*5/7);
   stats['Critical'].averageTimeToFix=Math.round(stats['Critical'].averageTimeToFix/(stats['Critical'].closed+stats['Critical'].opened)*5/7);
   stats['Major'].averageTimeToFix=Math.round(stats['Major'].averageTimeToFix/(stats['Major'].closed+stats['Major'].opened)*5/7);
@@ -260,7 +322,7 @@ letsCompute = function() {
 
   console.log("");
   console.log("--------STATISTIQUES---------");
-  console.log("> " + total+ " defects");
+  console.log("> " + stats.total+ " defects");
   console.log("1/ Blocker (average Time To Fix : " + stats['Blocker'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Blocker'].opened + " / Close : " + stats['Blocker'].closed);
   console.log("");
@@ -279,5 +341,15 @@ letsCompute = function() {
   console.log("6/ Trivial (average Time To Fix : " + stats['Trivial'].averageTimeToFix + " days)");
   console.log("Open : " + stats['Trivial'].opened + " / Close : " + stats['Trivial'].closed);
   console.log("");
+  var dateTimeline,
+      blockerTimeline,
+      criticalTimeline,
+      majorTimeline,
+      normalTimeline,
+      minorTimeline,
+      trivialTimeline;
+  history.allDates.forEach(function(hist) {
+    console.log("Blocker "+hist+" :"+history[hist].Blocker)    
+  });
 };
 
